@@ -1,20 +1,26 @@
+import json
+import os
+from datetime import datetime, timedelta
+
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from datetime import datetime, timedelta
 from pymongo import MongoClient
 import psycopg2
 
 
-# Настройки подключений
-MONGO_URI = "mongodb://admin:password123@mongodb:27017"
-MONGO_DB = "aviasales"
+# Настройки из переменных окружения
+MONGO_URI = os.getenv(
+    "MONGO_URI",
+    f"mongodb://{os.getenv('MONGO_USER', 'admin')}:{os.getenv('MONGO_PASSWORD', 'password123')}@mongodb:27017"
+)
+MONGO_DB = os.getenv("MONGO_DB", "aviasales")
 
 POSTGRES_CONN = {
-    "host": "postgres",
-    "port": 5432,
-    "database": "aviasales",
-    "user": "airflow",
-    "password": "airflow",
+    "host": os.getenv("POSTGRES_HOST", "postgres"),
+    "port": int(os.getenv("POSTGRES_PORT", 5432)),
+    "database": os.getenv("POSTGRES_DB", "aviasales"),
+    "user": os.getenv("POSTGRES_USER", "airflow"),
+    "password": os.getenv("POSTGRES_PASSWORD", "airflow"),
 }
 
 
@@ -28,57 +34,45 @@ default_args = {
 
 
 def extract_from_mongo(**context):
-    """Извлечение данных из MongoDB."""
+    """Извлечение сырых данных из MongoDB."""
     client = MongoClient(MONGO_URI)
     db = client[MONGO_DB]
     collection = db["flight_prices"]
 
     documents = list(collection.find())
 
-    # Преобразуем _id в строку
+    # Преобразуем ObjectId в строку для JSON-сериализации
     for doc in documents:
         doc["_id"] = str(doc["_id"])
+        # Преобразуем datetime объекты в ISO строки
+        if "fetched_at" in doc and hasattr(doc["fetched_at"], "isoformat"):
+            doc["fetched_at"] = doc["fetched_at"].isoformat()
+
+    client.close()
 
     # Сохраняем в XCom
-    context["ti"].xcom_push(key="prices", value=documents)
+    context["ti"].xcom_push(key="raw_data", value=documents)
 
     return len(documents)
 
 
 def load_to_postgres(**context):
-    """Загрузка данных в PostgreSQL."""
+    """Загрузка сырых JSON данных в PostgreSQL (EL подход)."""
     ti = context["ti"]
-    prices = ti.xcom_pull(task_ids="extract_from_mongo", key="prices")
+    raw_data = ti.xcom_pull(task_ids="extract_from_mongo", key="raw_data")
 
-    if not prices:
+    if not raw_data:
         return 0
 
     conn = psycopg2.connect(**POSTGRES_CONN)
     cursor = conn.cursor()
 
     count = 0
-    for price in prices:
+    for doc in raw_data:
+        # Сохраняем весь документ как JSONB без трансформации
         cursor.execute(
-            """
-            INSERT INTO stg.flight_prices (
-                origin, destination, departure_at, return_at,
-                price, currency, airline, flight_number,
-                transfers, duration, fetched_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                price.get("origin"),
-                price.get("destination"),
-                price.get("departure_at"),
-                price.get("return_at"),
-                price.get("price"),
-                price.get("currency", "RUB"),
-                price.get("airline"),
-                price.get("flight_number"),
-                price.get("transfers", 0),
-                price.get("duration_to") or price.get("duration"),
-                price.get("fetched_at"),
-            ),
+            "INSERT INTO stg.flight_prices_raw (raw_data) VALUES (%s)",
+            (json.dumps(doc),)
         )
         count += 1
 
@@ -92,10 +86,10 @@ def load_to_postgres(**context):
 with DAG(
     "el_flight_prices",
     default_args=default_args,
-    description="Extract flight prices from MongoDB, Load to PostgreSQL",
-    schedule_interval="@hourly",
+    description="Extract raw flight prices from MongoDB, Load to PostgreSQL as JSONB",
+    schedule_interval="*/1 * * * *",  # каждую минуту
     catchup=False,
-    tags=["etl", "aviasales"],
+    tags=["el", "aviasales"],
 ) as dag:
 
     extract_task = PythonOperator(

@@ -80,7 +80,7 @@ services:
     container_name: aviasales_airflow_init
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/airflow
       - AIRFLOW__CORE__FERNET_KEY=
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
     volumes:
@@ -111,13 +111,22 @@ services:
     restart: unless-stopped
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/airflow
       - AIRFLOW__CORE__FERNET_KEY=
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
       - AIRFLOW__WEBSERVER__SECRET_KEY=mysecretkey
       - AIRFLOW__WEBSERVER__BASE_URL=http://localhost:8081
       - AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX=True
       - AIRFLOW__WEBSERVER__WEB_SERVER_HOST=0.0.0.0
+      # Переменные для DAG
+      - MONGO_USER=${MONGO_USER:-admin}
+      - MONGO_PASSWORD=${MONGO_PASSWORD:-password123}
+      - MONGO_DB=${MONGO_DB:-aviasales}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-aviasales}
+      - POSTGRES_USER=${POSTGRES_USER:-airflow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-airflow}
     ports:
       - "8081:8080"
     volumes:
@@ -142,9 +151,18 @@ services:
     restart: unless-stopped
     environment:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER:-airflow}:${POSTGRES_PASSWORD:-airflow}@postgres/airflow
       - AIRFLOW__CORE__FERNET_KEY=
       - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      # Переменные для DAG
+      - MONGO_USER=${MONGO_USER:-admin}
+      - MONGO_PASSWORD=${MONGO_PASSWORD:-password123}
+      - MONGO_DB=${MONGO_DB:-aviasales}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-aviasales}
+      - POSTGRES_USER=${POSTGRES_USER:-airflow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-airflow}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs

@@ -1,6 +1,6 @@
 # Aviasales Price Tracker
 
-ETL-пайплайн для анализа цен на авиабилеты.
+EL-пайплайн для сбора и анализа цен на авиабилеты.
 
 ## Описание
 
@@ -23,7 +23,7 @@ Python App (FastAPI)
 │   └── dags/
 │       └── el_pipeline.py  # EL: MongoDB → PostgreSQL
 └── sql/
-    └── init.sql            # Схема stg.flight_prices
+    └── init.sql            # Схема stg.flight_prices_raw (JSONB)
 ```
 
 ## Быстрый старт
