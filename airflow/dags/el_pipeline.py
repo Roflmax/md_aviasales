@@ -87,7 +87,7 @@ with DAG(
     "el_flight_prices",
     default_args=default_args,
     description="Extract raw flight prices from MongoDB, Load to PostgreSQL as JSONB",
-    schedule_interval="*/1 * * * *",  # каждую минуту
+    schedule_interval="0 * * * *",  # каждый час
     catchup=False,
     tags=["el", "aviasales"],
 ) as dag:
