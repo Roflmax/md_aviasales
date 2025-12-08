@@ -4,102 +4,227 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from loguru import logger
 from pymongo import MongoClient
-import psycopg2
+from sqlalchemy import Column, Integer, String, DateTime, create_engine, text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.sql import func
 
 
 # Настройки из переменных окружения
-MONGO_URI = os.getenv(
-    "MONGO_URI",
-    f"mongodb://{os.getenv('MONGO_USER', 'admin')}:{os.getenv('MONGO_PASSWORD', 'password123')}@mongodb:27017"
-)
+def get_mongo_uri():
+    user = os.getenv('MONGO_USER', 'admin')
+    password = os.getenv('MONGO_PASSWORD', 'password123')
+    host = os.getenv('MONGO_HOST', 'mongodb')
+    return f"mongodb://{user}:{password}@{host}:27017"
+
+
+def get_postgres_url():
+    user = os.getenv("POSTGRES_USER", "airflow")
+    password = os.getenv("POSTGRES_PASSWORD", "airflow")
+    host = os.getenv("POSTGRES_HOST", "postgres")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    db = os.getenv("POSTGRES_DB", "aviasales")
+    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+
+
 MONGO_DB = os.getenv("MONGO_DB", "aviasales")
 
-POSTGRES_CONN = {
-    "host": os.getenv("POSTGRES_HOST", "postgres"),
-    "port": int(os.getenv("POSTGRES_PORT", 5432)),
-    "database": os.getenv("POSTGRES_DB", "aviasales"),
-    "user": os.getenv("POSTGRES_USER", "airflow"),
-    "password": os.getenv("POSTGRES_PASSWORD", "airflow"),
-}
+# SQLAlchemy ORM
+Base = declarative_base()
 
 
+class FlightPriceRaw(Base):
+    """Модель для хранения сырых данных о ценах с поддержкой SCD Type 2."""
+    __tablename__ = "flight_prices_raw"
+    __table_args__ = {"schema": "stg"}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    flight_price_id = Column(String(255), nullable=False)
+    raw_data = Column(JSONB, nullable=False)
+    fetched_at = Column(DateTime(timezone=True))
+    loaded_at = Column(DateTime(timezone=True), server_default=func.now())
+    valid_from_dttm = Column(DateTime(timezone=True), server_default=func.now())
+    valid_to_dttm = Column(DateTime(timezone=True), default=datetime(5999, 12, 31))
+
+
+def ensure_schema_exists(engine):
+    """Создание схемы stg если не существует."""
+    with engine.begin() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS stg"))
+
+
+def get_last_fetched_at(session, shift_hours: int = 1) -> datetime:
+    """
+    Получение времени последней загрузки из PostgreSQL.
+
+    :param session: SQLAlchemy сессия
+    :param shift_hours: Сдвиг в часах для перестраховки
+    :return: Datetime для фильтрации MongoDB
+    """
+    last_fetched = session.query(func.max(FlightPriceRaw.fetched_at)).scalar()
+
+    if last_fetched is None:
+        logger.info("No previous data found, will load all records")
+        return datetime(1970, 1, 1)
+
+    # Сдвигаем назад для перестраховки
+    result = last_fetched - timedelta(hours=shift_hours)
+    logger.info(f"Last fetched_at: {last_fetched}, loading from: {result}")
+    return result
+
+
+def get_data_from_mongo(fetched_after: datetime = None):
+    """
+    Инкрементальная загрузка данных из MongoDB.
+
+    :param fetched_after: Загружать только записи новее этой даты
+    :return: Generator с документами
+    """
+    client = None
+    try:
+        client = MongoClient(get_mongo_uri())
+        db = client[MONGO_DB]
+        collection = db["flight_prices"]
+
+        # Инкрементальная загрузка - только новые записи
+        if fetched_after:
+            filter_condition = {"fetched_at": {"$gt": fetched_after}}
+            logger.info(f"Fetching documents with fetched_at > {fetched_after}")
+        else:
+            filter_condition = {}
+            logger.info("Fetching all documents (initial load)")
+
+        cursor = collection.find(filter_condition)
+        count = 0
+
+        for doc in cursor:
+            count += 1
+            yield doc
+
+        logger.info(f"Fetched {count} documents from MongoDB")
+
+    except Exception as e:
+        logger.error(f"Error fetching from MongoDB: {e}")
+        raise
+    finally:
+        if client:
+            client.close()
+
+
+def upsert_flight_prices(session, documents):
+    """
+    Загрузка данных в PostgreSQL с SCD Type 2 логикой.
+
+    При обновлении записи:
+    - Старая версия закрывается (valid_to_dttm = NOW())
+    - Новая версия вставляется с valid_to_dttm = 5999-12-31
+    """
+    inserted_count = 0
+    updated_count = 0
+
+    for doc in documents:
+        try:
+            # Используем _id из MongoDB как уникальный идентификатор
+            flight_price_id = str(doc["_id"])
+
+            # Проверяем, есть ли активная запись с таким ID
+            existing = session.query(FlightPriceRaw).filter(
+                FlightPriceRaw.flight_price_id == flight_price_id,
+                FlightPriceRaw.valid_to_dttm == datetime(5999, 12, 31)
+            ).first()
+
+            if existing:
+                # Закрываем старую версию
+                existing.valid_to_dttm = func.now()
+                updated_count += 1
+                logger.debug(f"Closing old version for {flight_price_id}")
+            else:
+                inserted_count += 1
+
+            # Подготавливаем данные для вставки
+            doc_copy = dict(doc)
+            doc_copy["_id"] = str(doc_copy["_id"])
+
+            # Преобразуем datetime объекты
+            fetched_at = doc.get("fetched_at")
+            if fetched_at and hasattr(fetched_at, "isoformat"):
+                doc_copy["fetched_at"] = fetched_at.isoformat()
+
+            # Создаём новую запись
+            new_record = FlightPriceRaw(
+                flight_price_id=flight_price_id,
+                raw_data=doc_copy,
+                fetched_at=fetched_at,
+                valid_to_dttm=datetime(5999, 12, 31)
+            )
+            session.add(new_record)
+
+        except Exception as e:
+            logger.error(f"Error processing document {doc.get('_id')}: {e}")
+            raise
+
+    session.commit()
+    logger.info(f"Upsert complete: {inserted_count} inserted, {updated_count} updated")
+    return inserted_count + updated_count
+
+
+def extract_and_load(**context):
+    """
+    Основная функция EL пайплайна.
+    Извлекает данные из MongoDB и загружает в PostgreSQL.
+    """
+    engine = create_engine(get_postgres_url())
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Убеждаемся что схема существует
+        ensure_schema_exists(engine)
+
+        # Создаём таблицу если не существует
+        Base.metadata.create_all(engine, checkfirst=True)
+
+        # Получаем время последней загрузки
+        last_fetched = get_last_fetched_at(session)
+
+        # Извлекаем новые данные из MongoDB
+        documents = get_data_from_mongo(fetched_after=last_fetched)
+
+        # Загружаем в PostgreSQL с SCD Type 2
+        count = upsert_flight_prices(session, documents)
+
+        logger.info(f"EL pipeline completed successfully. Processed {count} records.")
+        return count
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"EL pipeline failed: {e}")
+        raise
+    finally:
+        session.close()
+
+
+# DAG Configuration
 default_args = {
     "owner": "airflow",
     "depends_on_past": False,
-    "start_date": datetime(2024, 12, 1),
-    "retries": 1,
+    "start_date": datetime(2025, 12, 6),
+    "retries": 3,
     "retry_delay": timedelta(minutes=5),
 }
-
-
-def extract_from_mongo(**context):
-    """Извлечение сырых данных из MongoDB."""
-    client = MongoClient(MONGO_URI)
-    db = client[MONGO_DB]
-    collection = db["flight_prices"]
-
-    documents = list(collection.find())
-
-    # Преобразуем ObjectId в строку для JSON-сериализации
-    for doc in documents:
-        doc["_id"] = str(doc["_id"])
-        # Преобразуем datetime объекты в ISO строки
-        if "fetched_at" in doc and hasattr(doc["fetched_at"], "isoformat"):
-            doc["fetched_at"] = doc["fetched_at"].isoformat()
-
-    client.close()
-
-    # Сохраняем в XCom
-    context["ti"].xcom_push(key="raw_data", value=documents)
-
-    return len(documents)
-
-
-def load_to_postgres(**context):
-    """Загрузка сырых JSON данных в PostgreSQL (EL подход)."""
-    ti = context["ti"]
-    raw_data = ti.xcom_pull(task_ids="extract_from_mongo", key="raw_data")
-
-    if not raw_data:
-        return 0
-
-    conn = psycopg2.connect(**POSTGRES_CONN)
-    cursor = conn.cursor()
-
-    count = 0
-    for doc in raw_data:
-        # Сохраняем весь документ как JSONB без трансформации
-        cursor.execute(
-            "INSERT INTO stg.flight_prices_raw (raw_data) VALUES (%s)",
-            (json.dumps(doc),)
-        )
-        count += 1
-
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-    return count
-
 
 with DAG(
     "el_flight_prices",
     default_args=default_args,
-    description="Extract raw flight prices from MongoDB, Load to PostgreSQL as JSONB",
+    description="Extract flight prices from MongoDB, Load to PostgreSQL (incremental, SCD Type 2)",
     schedule_interval="0 * * * *",  # каждый час
     catchup=False,
-    tags=["el", "aviasales"],
+    tags=["el", "aviasales", "incremental"],
 ) as dag:
 
-    extract_task = PythonOperator(
-        task_id="extract_from_mongo",
-        python_callable=extract_from_mongo,
+    el_task = PythonOperator(
+        task_id="extract_and_load",
+        python_callable=extract_and_load,
     )
-
-    load_task = PythonOperator(
-        task_id="load_to_postgres",
-        python_callable=load_to_postgres,
-    )
-
-    extract_task >> load_task
