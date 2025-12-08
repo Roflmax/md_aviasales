@@ -36,7 +36,7 @@ Base = declarative_base()
 
 
 class FlightPriceRaw(Base):
-    """Модель для хранения сырых данных о ценах с поддержкой SCD Type 2."""
+    """Модель для хранения сырых данных о ценах (append-only лог)."""
     __tablename__ = "flight_prices_raw"
     __table_args__ = {"schema": "stg"}
 
@@ -45,8 +45,6 @@ class FlightPriceRaw(Base):
     raw_data = Column(JSONB, nullable=False)
     fetched_at = Column(DateTime(timezone=True))
     loaded_at = Column(DateTime(timezone=True), server_default=func.now())
-    valid_from_dttm = Column(DateTime(timezone=True), server_default=func.now())
-    valid_to_dttm = Column(DateTime(timezone=True), default=datetime(5999, 12, 31))
 
 
 def ensure_schema_exists(engine):
@@ -113,35 +111,15 @@ def get_data_from_mongo(fetched_after: datetime = None):
             client.close()
 
 
-def upsert_flight_prices(session, documents):
+def insert_flight_prices(session, documents):
     """
-    Загрузка данных в PostgreSQL с SCD Type 2 логикой.
-
-    При обновлении записи:
-    - Старая версия закрывается (valid_to_dttm = NOW())
-    - Новая версия вставляется с valid_to_dttm = 5999-12-31
+    Загрузка данных в PostgreSQL (простой INSERT, append-only лог).
     """
     inserted_count = 0
-    updated_count = 0
 
     for doc in documents:
         try:
-            # Используем _id из MongoDB как уникальный идентификатор
             flight_price_id = str(doc["_id"])
-
-            # Проверяем, есть ли активная запись с таким ID
-            existing = session.query(FlightPriceRaw).filter(
-                FlightPriceRaw.flight_price_id == flight_price_id,
-                FlightPriceRaw.valid_to_dttm == datetime(5999, 12, 31)
-            ).first()
-
-            if existing:
-                # Закрываем старую версию
-                existing.valid_to_dttm = func.now()
-                updated_count += 1
-                logger.debug(f"Closing old version for {flight_price_id}")
-            else:
-                inserted_count += 1
 
             # Подготавливаем данные для вставки
             doc_copy = dict(doc)
@@ -157,17 +135,17 @@ def upsert_flight_prices(session, documents):
                 flight_price_id=flight_price_id,
                 raw_data=doc_copy,
                 fetched_at=fetched_at,
-                valid_to_dttm=datetime(5999, 12, 31)
             )
             session.add(new_record)
+            inserted_count += 1
 
         except Exception as e:
             logger.error(f"Error processing document {doc.get('_id')}: {e}")
             raise
 
     session.commit()
-    logger.info(f"Upsert complete: {inserted_count} inserted, {updated_count} updated")
-    return inserted_count + updated_count
+    logger.info(f"Inserted {inserted_count} records")
+    return inserted_count
 
 
 def extract_and_load(**context):
@@ -192,8 +170,8 @@ def extract_and_load(**context):
         # Извлекаем новые данные из MongoDB
         documents = get_data_from_mongo(fetched_after=last_fetched)
 
-        # Загружаем в PostgreSQL с SCD Type 2
-        count = upsert_flight_prices(session, documents)
+        # Загружаем в PostgreSQL
+        count = insert_flight_prices(session, documents)
 
         logger.info(f"EL pipeline completed successfully. Processed {count} records.")
         return count
@@ -218,7 +196,7 @@ default_args = {
 with DAG(
     "el_flight_prices",
     default_args=default_args,
-    description="Extract flight prices from MongoDB, Load to PostgreSQL (incremental, SCD Type 2)",
+    description="Extract flight prices from MongoDB, Load to PostgreSQL (incremental)",
     schedule_interval="0 * * * *",  # каждый час
     catchup=False,
     tags=["el", "aviasales", "incremental"],
