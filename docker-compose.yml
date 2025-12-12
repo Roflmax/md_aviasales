@@ -87,6 +87,8 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+      - ./dbt_project:/opt/airflow/dbt_project
+      - ./airflow/reports:/opt/airflow/reports
     entrypoint: /bin/bash
     command:
       - -c
@@ -133,6 +135,8 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+      - ./dbt_project:/opt/airflow/dbt_project
+      - ./airflow/reports:/opt/airflow/reports
     command: webserver
     depends_on:
       airflow-init:
@@ -167,6 +171,8 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+      - ./dbt_project:/opt/airflow/dbt_project
+      - ./airflow/reports:/opt/airflow/reports
     command: scheduler
     depends_on:
       airflow-init:

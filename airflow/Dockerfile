@@ -1,4 +1,11 @@
 FROM apache/airflow:2.8.0
 
 USER airflow
-RUN pip install --no-cache-dir pymongo psycopg2-binary sqlalchemy loguru
+RUN pip install --no-cache-dir \
+    pymongo \
+    psycopg2-binary \
+    sqlalchemy \
+    loguru \
+    dbt-core \
+    dbt-postgres \
+    elementary-data

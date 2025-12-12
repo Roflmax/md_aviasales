@@ -1,0 +1,40 @@
+name: 'aviasales_dwh'
+version: '1.0.0'
+
+# Какую версию dbt требуем
+require-dbt-version: ">=1.0.0"
+
+# Флаг для Elementary (сбор метрик тестов)
+flags:
+  require_explicit_package_overrides_for_builtin_materializations: false
+
+# Профиль подключения к БД (из profiles.yml)
+profile: 'aviasales'
+
+# Где искать файлы
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+# Папка для скомпилированного SQL
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Настройки моделей по папкам
+models:
+  aviasales_dwh:
+    # ODS слой: инкрементальная загрузка в схему ods
+    ods:
+      +materialized: incremental
+      +schema: ods
+      +tags: ['ods']
+
+    # DM слой: пересоздаём таблицы целиком в схему dm
+    dm:
+      +materialized: table
+      +schema: dm
+      +tags: ['dm', 'analytics']

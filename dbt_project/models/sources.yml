@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: stg
+    description: "Staging слой - сырые данные из MongoDB"
+    database: aviasales
+    schema: stg
+
+    tables:
+      - name: flight_prices_raw
+        description: "Сырые данные о ценах на билеты в формате JSONB"
+        columns:
+          - name: id
+            description: "Первичный ключ записи"
+          - name: raw_data
+            description: "JSONB с данными билета (origin, destination, price, и т.д.)"
+          - name: loaded_at
+            description: "Время загрузки в PostgreSQL"
+          - name: flight_price_id
+            description: "ID билета из API"
+          - name: fetched_at
+            description: "Время парсинга с API"
+
+        # Тест freshness - проверяем что данные свежие
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 48, period: hour}
+        loaded_at_field: loaded_at

@@ -1,66 +1,46 @@
 # Aviasales Price Tracker
 
-EL-пайплайн для сбора и анализа цен на авиабилеты.
-
-## Описание
-
-Сервис для сбора и анализа цен на авиабилеты из Aviasales API. Данные сохраняются в MongoDB и затем переносятся в PostgreSQL для аналитики.
-
-## Архитектура
-
-```
-MongoDB  ──>  Airflow (EL)  ──>  PostgreSQL (STG)
-   ↑
-Python App (FastAPI)
-```
+ELT-пайплайн для анализа цен на авиабилеты LED → SVX.
 
 ## Структура проекта
 
 ```
-├── docker-compose.yml
-├── app/                    # FastAPI сервис (сбор данных → MongoDB)
+md_aviasales/
+├── app/                    # FastAPI сервис (API → MongoDB)
 ├── airflow/
 │   └── dags/
-│       └── el_pipeline.py  # EL: MongoDB → PostgreSQL
-└── sql/
-    └── init.sql            # Схема stg.flight_prices_raw (JSONB)
+│       ├── fetch_prices_dag.py   # Сбор данных из API
+│       ├── el_pipeline.py        # MongoDB → PostgreSQL
+│       └── dbt_pipeline.py       # dbt трансформации
+├── dbt_project/            # DBT проект
+│   └── models/
+│       ├── ods/            # ODS слой (парсинг JSONB)
+│       └── dm/             # DM витрины (аналитика)
+├── sql/                    # SQL скрипты инициализации
+└── docker-compose.yml
 ```
 
-## Быстрый старт
+## Слои данных
 
-### 1. Клонирование и настройка
+| Слой | Описание |
+|------|----------|
+| RAW | MongoDB — сырые данные из API |
+| STG | PostgreSQL JSONB — staging |
+| ODS | Распарсенные данные |
+| DM | Аналитические витрины |
+
+## Запуск
 
 ```bash
-# Скопировать шаблон переменных окружения
 cp .env.example .env
-
-# Отредактировать .env и указать свой API токен
+docker compose up -d
 ```
 
-### 2. Запуск
-
-```bash
-docker-compose up -d
-```
-
-### 3. Сервисы
+## Сервисы
 
 | Сервис | URL |
 |--------|-----|
-| FastAPI | http://localhost:8000 |
+| Swagger | http://localhost:8000/docs |
 | Airflow | http://localhost:8081 (admin/admin) |
 | PostgreSQL | localhost:5432 |
 | MongoDB | localhost:27017 |
-
-## API Endpoints
-
-| Метод | URL | Описание |
-|-------|-----|----------|
-| GET | `/health` | Проверка состояния сервиса |
-| POST | `/fetch-prices` | Загрузить цены из Aviasales API |
-| GET | `/prices` | Получить сохранённые цены |
-| GET | `/prices/stats` | Статистика по маршрутам |
-
-## Swagger UI
-
-http://localhost:8000/docs

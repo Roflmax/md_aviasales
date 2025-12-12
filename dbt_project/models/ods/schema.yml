@@ -1,0 +1,109 @@
+version: 2
+
+models:
+  - name: ods_flight_prices
+    description: "ODS слой: распарсенные данные о ценах на билеты LED → SVX"
+
+    # ============================================
+    # Elementary тесты (6 типов аномалий)
+    # ============================================
+    tests:
+      # 1. Volume anomalies - резкое изменение количества строк
+      - elementary.volume_anomalies:
+          timestamp_column: loaded_at
+          where_expression: "loaded_at >= current_date - interval '30 days'"
+
+      # 2. Freshness anomalies - данные не обновляются вовремя
+      - elementary.freshness_anomalies:
+          timestamp_column: loaded_at
+
+      # 3. Column anomalies - аномалии в конкретной колонке
+      - elementary.column_anomalies:
+          column_name: price
+          timestamp_column: loaded_at
+
+      # 4. All columns anomalies - проверка всех числовых колонок
+      - elementary.all_columns_anomalies:
+          timestamp_column: loaded_at
+
+      # 5. Dimension anomalies - изменение распределения по измерению
+      - elementary.dimension_anomalies:
+          dimensions:
+            - airline
+          timestamp_column: loaded_at
+
+      # 6. Event freshness anomalies - свежесть событий
+      - elementary.event_freshness_anomalies:
+          event_timestamp_column: fetched_at
+          update_timestamp_column: loaded_at
+
+    columns:
+      - name: record_id
+        description: "Уникальный ID записи (из STG)"
+        tests:
+          - unique
+          - not_null
+
+      - name: flight_price_id
+        description: "ID билета из API Travelpayouts"
+        tests:
+          - not_null
+
+      - name: origin
+        description: "Код аэропорта вылета"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['LED']
+
+      - name: destination
+        description: "Код аэропорта прилёта"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['SVX']
+
+      - name: price
+        description: "Цена билета в рублях"
+        tests:
+          - not_null
+
+      - name: airline
+        description: "Код авиакомпании (DP, U6, 5N)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['DP', 'U6', '5N', 'SU', 'S7']
+              config:
+                severity: warn  # warn, не error - могут появиться новые
+
+      - name: flight_number
+        description: "Номер рейса"
+
+      - name: departure_at
+        description: "Дата и время вылета"
+        tests:
+          - not_null
+
+      - name: duration_minutes
+        description: "Длительность полёта в минутах"
+
+      - name: transfers
+        description: "Количество пересадок"
+
+      - name: fetched_at
+        description: "Когда билет был спарсен с API"
+        tests:
+          - not_null
+
+      - name: loaded_at
+        description: "Когда запись загружена в PostgreSQL"
+
+      - name: fetch_day_of_week
+        description: "День недели парсинга (0=Вс, 1=Пн, ..., 6=Сб)"
+
+      - name: fetch_hour
+        description: "Час парсинга (0-23)"
+
+      - name: days_until_departure
+        description: "За сколько дней до вылета был спарсен билет"
