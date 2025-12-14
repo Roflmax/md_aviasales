@@ -3,11 +3,11 @@
 ELT-пайплайн для анализа цен на авиабилеты LED (Санкт-Петербург) → SVX (Екатеринбург).
 
 
-```
 
 ## Структура проекта
 
 ```
+
 md_aviasales/
 ├── app/                        # FastAPI сервис сбора данных
 │   ├── main.py                 # 3 endpoints: /health, /fetch-prices, /prices
@@ -42,6 +42,7 @@ md_aviasales/
 ├── .pre-commit-config.yaml     # Линтеры: black, isort, flake8, sqlfluff
 ├── .env.example                # Шаблон конфигурации
 └── README.md
+
 ```
 
 ## Слои данных
@@ -123,15 +124,3 @@ docker compose ps
 | PostgreSQL | localhost:5432 | airflow / airflow |
 | MongoDB | localhost:27017 | admin / password |
 
-## Качество данных
-
-- **dbt-core тесты**: unique, not_null, accepted_values, relationships
-- **Elementary тесты**: 6 типов аномалий (volume, freshness, column, dimension, event_freshness, all_columns)
-- **Pre-commit хуки**: black, isort, flake8, yamllint, sqlfluff
-
-## Мониторинг
-
-Elementary Report автоматически обновляется после каждого запуска dbt:
-- Статусы всех тестов
-- Обнаруженные аномалии
-- Тренды метрик качества
