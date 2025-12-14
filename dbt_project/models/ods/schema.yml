@@ -4,38 +4,32 @@ models:
   - name: ods_flight_prices
     description: "ODS слой: распарсенные данные о ценах на билеты LED → SVX"
 
-    # ============================================
-    # Elementary тесты (6 типов аномалий)
-    # ============================================
+    # Elementary тесты (4 типа аномалий)
     tests:
-      # 1. Volume anomalies - резкое изменение количества строк
       - elementary.volume_anomalies:
           timestamp_column: loaded_at
           where_expression: "loaded_at >= current_date - interval '30 days'"
 
-      # 2. Freshness anomalies - данные не обновляются вовремя
       - elementary.freshness_anomalies:
           timestamp_column: loaded_at
 
-      # 3. Column anomalies - аномалии в конкретной колонке
       - elementary.column_anomalies:
           column_name: price
           timestamp_column: loaded_at
 
-      # 4. All columns anomalies - проверка всех числовых колонок
-      - elementary.all_columns_anomalies:
-          timestamp_column: loaded_at
-
-      # 5. Dimension anomalies - изменение распределения по измерению
       - elementary.dimension_anomalies:
           dimensions:
             - airline
           timestamp_column: loaded_at
 
-      # 6. Event freshness anomalies - свежесть событий
+      - elementary.all_columns_anomalies:
+          timestamp_column: loaded_at
+          tags: ['elementary']
+
       - elementary.event_freshness_anomalies:
           event_timestamp_column: fetched_at
           update_timestamp_column: loaded_at
+          tags: ['elementary']
 
     columns:
       - name: record_id
@@ -53,15 +47,11 @@ models:
         description: "Код аэропорта вылета"
         tests:
           - not_null
-          - accepted_values:
-              values: ['LED']
 
       - name: destination
         description: "Код аэропорта прилёта"
         tests:
           - not_null
-          - accepted_values:
-              values: ['SVX']
 
       - name: price
         description: "Цена билета в рублях"

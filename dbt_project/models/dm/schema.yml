@@ -2,20 +2,28 @@ version: 2
 
 models:
   # ============================================
-  # Витрина 1: Цена по дням до вылета
+  # Витрина 1: За сколько дней до вылета покупать
   # ============================================
   - name: dm_price_by_days_before_departure
-    description: "Средняя цена билета в зависимости от того, за сколько дней до вылета он был найден"
+    description: >
+      Анализ влияния срока покупки на цену билета.
+      Ключевая метрика — avg_price_deviation: среднее отклонение цены от средней цены рейса.
+      Отрицательное значение = в этот период цены НИЖЕ средней.
 
     columns:
       - name: days_until_departure
-        description: "За сколько дней до вылета был спарсен билет"
+        description: "За сколько дней до вылета (0-90)"
         tests:
+          - not_null
           - unique
+
+      - name: avg_price_deviation
+        description: "Отклонение от средней цены рейса (руб). Отрицательное = дешевле."
+        tests:
           - not_null
 
       - name: avg_price
-        description: "Средняя цена билета (руб)"
+        description: "Средняя абсолютная цена (руб)"
         tests:
           - not_null
 
@@ -31,18 +39,22 @@ models:
           - not_null
 
       - name: price_rank
-        description: "Рейтинг (1 = лучший день для покупки)"
+        description: "Рейтинг (1 = лучший период для покупки)"
 
 
   # ============================================
-  # Витрина 2: Цена по времени парсинга
+  # Витрина 2: В какое время искать билеты
   # ============================================
-  - name: dm_price_by_fetch_time
-    description: "Средняя цена билета по дню недели и часу парсинга"
+  - name: dm_price_by_day_and_hour
+    description: >
+      Анализ влияния времени парсинга на цену билета.
+      Группировка: день недели + час.
+      Ключевая метрика — avg_price_deviation: среднее отклонение цены от средней цены рейса.
+      Для агрегации по дню или часу — используйте GROUP BY в запросе.
 
     columns:
       - name: fetch_day_of_week
-        description: "День недели (0=Вс, 1=Пн, ..., 6=Сб)"
+        description: "День недели парсинга (0=Вс, 1=Пн, ..., 6=Сб)"
         tests:
           - not_null
           - accepted_values:
@@ -56,61 +68,24 @@ models:
       - name: day_name
         description: "Название дня недели"
 
-      - name: avg_price
-        description: "Средняя цена (руб)"
+      - name: avg_price_deviation
+        description: "Отклонение от средней цены рейса (руб). Отрицательное = дешевле."
         tests:
           - not_null
+
+      - name: avg_price
+        description: "Средняя абсолютная цена (руб)"
+        tests:
+          - not_null
+
+      - name: min_price
+        description: "Минимальная цена"
+
+      - name: max_price
+        description: "Максимальная цена"
 
       - name: observations_count
         description: "Количество наблюдений"
 
       - name: price_rank
-        description: "Рейтинг (1 = лучшее время)"
-
-
-  # ============================================
-  # Витрина 3: Лучшие цены на рейс
-  # ============================================
-  - name: dm_best_prices_per_flight
-    description: "Минимальная зафиксированная цена на каждый рейс с контекстом"
-
-    columns:
-      - name: flight_price_id
-        description: "ID рейса из API"
-        tests:
-          - unique
-          - not_null
-          # Тест relationships - проверяем что ID есть в ODS
-          - relationships:
-              to: ref('ods_flight_prices')
-              field: flight_price_id
-
-      - name: airline
-        description: "Код авиакомпании"
-        tests:
-          - not_null
-
-      - name: flight_number
-        description: "Номер рейса"
-
-      - name: departure_at
-        description: "Дата и время вылета"
-        tests:
-          - not_null
-
-      - name: best_price
-        description: "Лучшая (минимальная) цена на рейс"
-        tests:
-          - not_null
-
-      - name: best_price_found_at
-        description: "Когда была найдена лучшая цена"
-
-      - name: times_seen
-        description: "Сколько раз мы видели этот рейс"
-
-      - name: price_spread
-        description: "Разброс цен (max - min)"
-
-      - name: potential_savings
-        description: "Экономия при покупке по лучшей цене vs средней"
+        description: "Рейтинг (1 = лучшее время для поиска)"

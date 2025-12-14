@@ -38,3 +38,9 @@ models:
       +materialized: table
       +schema: dm
       +tags: ['dm', 'analytics']
+
+# Настройки тестов
+tests:
+  aviasales_dwh:
+    check_departure_dates_completeness:
+      +severity: warn

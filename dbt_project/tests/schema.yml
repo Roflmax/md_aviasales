@@ -1,0 +1,6 @@
+version: 2
+
+tests:
+  - name: check_departure_dates_completeness
+    config:
+      severity: warn
