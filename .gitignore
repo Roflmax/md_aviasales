@@ -38,3 +38,17 @@ docker-compose.override.yml
 # Course materials
 docs/
 tz.md
+
+# DBT generated files
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+dbt_project/edr_target/
+dbt_project/.user.yml
+
+# Airflow reports
+airflow/reports/*.html
+airflow/reports/*.json
+
+# Sensitive configuration files
+dbt_project/profiles.yml

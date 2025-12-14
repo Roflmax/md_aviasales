@@ -1,7 +1,7 @@
 packages:
   # Elementary - мониторинг качества данных и тесты аномалий
   - package: elementary-data/elementary
-    version: "0.16.1"
+    version: "0.17.0"
 
   # dbt_utils - полезные макросы (generate_surrogate_key и др.)
   - package: dbt-labs/dbt_utils
