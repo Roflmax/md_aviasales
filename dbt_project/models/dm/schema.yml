@@ -10,6 +10,8 @@ models:
       Ключевая метрика — avg_price_deviation: среднее отклонение цены от средней цены рейса.
       Отрицательное значение = в этот период цены НИЖЕ средней.
 
+      Материализация: incremental (merge по days_until_departure)
+
     columns:
       - name: days_until_departure
         description: "За сколько дней до вылета (0-90)"
@@ -40,6 +42,11 @@ models:
 
       - name: price_rank
         description: "Рейтинг (1 = лучший период для покупки)"
+
+      - name: last_observation
+        description: "Временная метка последнего наблюдения для этого периода (для инкрементальной загрузки)"
+        tests:
+          - not_null
 
 
   # ============================================
