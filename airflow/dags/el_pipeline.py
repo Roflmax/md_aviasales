@@ -1,22 +1,22 @@
-import json
 import os
 from datetime import datetime, timedelta
 
-from airflow import DAG
 from airflow.operators.python import PythonOperator
 from loguru import logger
 from pymongo import MongoClient
-from sqlalchemy import Column, Integer, String, DateTime, create_engine, text
+from sqlalchemy import Column, DateTime, Integer, String, create_engine, text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
+
+from airflow import DAG
 
 
 # Настройки из переменных окружения
 def get_mongo_uri():
-    user = os.getenv('MONGO_USER', 'admin')
-    password = os.getenv('MONGO_PASSWORD', 'password123')
-    host = os.getenv('MONGO_HOST', 'mongodb')
+    user = os.getenv("MONGO_USER", "admin")
+    password = os.getenv("MONGO_PASSWORD", "password123")
+    host = os.getenv("MONGO_HOST", "mongodb")
     return f"mongodb://{user}:{password}@{host}:27017"
 
 
@@ -37,6 +37,7 @@ Base = declarative_base()
 
 class FlightPriceRaw(Base):
     """Модель для хранения сырых данных о ценах (append-only лог)."""
+
     __tablename__ = "flight_prices_raw"
     __table_args__ = {"schema": "stg"}
 

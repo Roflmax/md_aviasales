@@ -9,9 +9,9 @@ DAG для запуска dbt трансформаций.
 
 from datetime import datetime, timedelta
 
-from airflow import DAG
 from airflow.operators.bash import BashOperator
 
+from airflow import DAG
 
 # Пути к dbt проекту
 DBT_PROJECT_DIR = "/opt/airflow/dbt_project"

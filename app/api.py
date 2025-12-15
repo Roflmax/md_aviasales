@@ -2,7 +2,9 @@ import httpx
 from config import API_TOKEN, API_URL
 
 
-def fetch_prices(origin: str = "LED", destination: str = "SVX", departure_at: str = None) -> list:
+def fetch_prices(
+    origin: str = "LED", destination: str = "SVX", departure_at: str = None
+) -> list:
     """
     Запрашивает цены из Aviasales API.
 

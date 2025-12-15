@@ -1,8 +1,7 @@
+from api import fetch_prices
+from db import get_prices, save_prices
 from fastapi import FastAPI
 from pydantic import BaseModel
-
-from api import fetch_prices
-from db import save_prices, get_prices
 
 app = FastAPI()
 

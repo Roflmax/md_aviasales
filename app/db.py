@@ -1,6 +1,7 @@
 from datetime import datetime
+
+from config import MONGO_DB, MONGO_URI
 from pymongo import MongoClient
-from config import MONGO_URI, MONGO_DB
 
 
 def get_collection():
